@@ -63,7 +63,8 @@ client.on('messageCreate', async (message) => {
         adapterCreator: message.guild.voiceAdapterCreator,
       });
 
-      const player = createAudioPlayer();
+      // use a guild-scoped player so commands like !skip work consistently
+      const player = getOrCreatePlayer(message.guild.id);
       connection.subscribe(player);
       player.play(resource);
 
@@ -71,6 +72,23 @@ client.on('messageCreate', async (message) => {
     } catch (err) {
       console.error(err);
       message.channel.send('Errore nella riproduzione.');
+    }
+  }
+
+  if (content.startsWith('!skip')) {
+    const player = players.get(message.guild.id);
+    if (!player) {
+      await message.reply('Nessuna riproduzione in corso.');
+      return;
+    }
+
+    try {
+      // stop the current resource; the player will emit 'idle' and move on
+      player.stop();
+      await message.reply('Traccia saltata.');
+    } catch (err) {
+      console.error(err);
+      await message.reply('Impossibile saltare la traccia.');
     }
   }
 
@@ -86,8 +104,8 @@ client.on('messageCreate', async (message) => {
     }
 
     try {
-      const tracks = await getPlaylistTracks(playlistId);
-      await message.reply('Avvio playlist con ${tracks.length} brani.');
+  const tracks = await getPlaylistTracks(playlistId);
+  await message.reply(`Avvio playlist con ${tracks.length} brani.`);
 
       const connection =
         getVoiceConnection(message.guild.id) ||
@@ -100,15 +118,20 @@ client.on('messageCreate', async (message) => {
       const player = getOrCreatePlayer(message.guild.id);
       connection.subscribe(player);
 
-      for (const track in tracks) {
-        const query = '${track.title} ' + track.artists.map((a) => a.name).join(', ');
+      // iterate items returned by getPlaylistTracks (we enrich items with `name` and `artistsString`)
+      for (const item of tracks) {
+        const title = item.name ?? (item.track && item.track.name) ?? 'Titolo sconosciuto';
+        const artistsString = item.artistsString ?? (item.track?.artists?.map(a => a.name).join(', ')) ?? '';
+        const query = `${title} ${artistsString}`.trim();
+
         try {
           const ytUrl = await searchYouTube(query);
-          
+
           const resource = createYouTubeResource(ytUrl);
           player.play(resource);
           await new Promise((resolve) => player.once('idle', resolve));
-        } catch {
+        } catch (err) {
+          console.error('Errore riproduzione traccia playlist:', err);
           await message.channel.send(`Brano non trovato: ${title}`);
         }
       }
