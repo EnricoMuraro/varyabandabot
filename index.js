@@ -1,7 +1,8 @@
 import 'dotenv/config';
-import { createYouTubeResource } from './yt-dlp.js';
+import { createYouTubeResource, getAudioDuration } from './yt-dlp.js';
 import { Client, GatewayIntentBits } from 'discord.js';
-import { getPlaylistTracks } from 'spotify.js'
+import { getPlaylistTracks } from './spotify.js'
+import VaryabandaGame from './varyabanda_game.js';
 import {
   joinVoiceChannel,
   createAudioPlayer,
@@ -11,6 +12,7 @@ import {
   StreamType,
 } from '@discordjs/voice';
 import fetch from 'node-fetch';
+import { PlaylistManager } from 'spotify-api.js';
 
 const client = new Client({
   intents: [
@@ -22,6 +24,7 @@ const client = new Client({
 });
 
 const players = new Map();
+const games = new Map();
 
 function getOrCreatePlayer(guildId) {
   let player = players.get(guildId);
@@ -32,6 +35,15 @@ function getOrCreatePlayer(guildId) {
     players.set(guildId, player);
   }
   return player;
+}
+
+function getOrCreateGame(guildId) {
+  let game = games.get(guildId);
+  if (!game) {
+    game = new VaryabandaGame();
+    games.set(guildId, game);
+  }
+  return game;
 }
 
 async function searchYouTube(query) {
@@ -102,10 +114,9 @@ client.on('messageCreate', async (message) => {
       await message.reply('Entra in un canale vocale prima di usare il comando.');
       return;
     }
-
     try {
-  const tracks = await getPlaylistTracks(playlistId);
-  await message.reply(`Avvio playlist con ${tracks.length} brani.`);
+    const tracks = await getPlaylistTracks(playlistId);
+    await message.reply(`Avvio playlist con ${tracks.length} brani.`);
 
       const connection =
         getVoiceConnection(message.guild.id) ||
@@ -120,8 +131,8 @@ client.on('messageCreate', async (message) => {
 
       // iterate items returned by getPlaylistTracks (we enrich items with `name` and `artistsString`)
       for (const item of tracks) {
-        const title = item.name ?? (item.track && item.track.name) ?? 'Titolo sconosciuto';
-        const artistsString = item.artistsString ?? (item.track?.artists?.map(a => a.name).join(', ')) ?? '';
+        const title = item.name;
+        const artistsString = item.artistsString;
         const query = `${title} ${artistsString}`.trim();
 
         try {
@@ -150,7 +161,113 @@ client.on('messageCreate', async (message) => {
       message.reply('Disconnesso dal canale vocale.');
     }
   }
+
+  if (content.startsWith('!varyabanda')) {
+    const url = content.split(/\s+/)[1];
+    const playlistId = url?.split('/playlist/')[1]?.split('?')[0];
+    if (!playlistId) return message.reply('Link playlist non valido.');
+
+    const voiceChannel = message.member?.voice?.channel;
+    if (!voiceChannel) {
+      await message.reply('Entra in un canale vocale prima di usare il comando.');
+      return;
+    }
+    // instantiate a fresh game for this command
+    const game = new VaryabandaGame();
+    games.set(message.guild.id, game);
+
+    // attach basic event listeners so the channel is informed
+    game.on('titleGuessed', ({ roundNumber, title, scorers }) => {
+      message.channel.send(`Titolo indovinato da ${scorers.join ? scorers.join(', ') : scorers}: ${title}`);
+    });
+    game.on('artistGuessed', ({ roundNumber, artist, scorers }) => {
+      message.channel.send(`Artista indovinato da ${scorers.join ? scorers.join(', ') : scorers}: ${artist}`);
+    });
+    game.on('roundOver', ({ roundNumber, title, artists, scoreboard }) => {
+      const scoreboardMsg = Array.from(scoreboard.entries()).sort((a, b) => b[1] - a[1])
+        .map(([userId, score]) => `${game.players.get(userId) ?? userId}: ${score} punti`)
+        .join('\n');
+
+      message.channel.send(`
+        Round ${roundNumber} terminato — Titolo: ${title} — Artisti: ${artists.join ? artists.join(', ') : artists}
+        Classifica:
+        ${scoreboardMsg}
+        `);
+
+      const player = players.get(message.guild.id);  
+      player.stop();
+    });
+    try {
+      const tracks = await getPlaylistTracks(playlistId);
+      await message.reply(`Avvio varyabanda con ${tracks.length} brani.`);
+      console.log(`Avvio varyabanda con ${tracks.length} brani.`);
+      const connection =
+        getVoiceConnection(message.guild.id) ||
+        joinVoiceChannel({
+          channelId: voiceChannel.id,
+          guildId: message.guild.id,
+          adapterCreator: message.guild.voiceAdapterCreator,
+        });
+
+      const player = getOrCreatePlayer(message.guild.id);
+      connection.subscribe(player);
+      game.start();
+      // iterate items returned by getPlaylistTracks (we enrich items with `name` and `artistsString`)
+      let roundNumber = 1;
+      for (const item of tracks) {
+        const title = item.name;
+        const artistsString = item.artistsString;
+        const query = `${title} ${artistsString}`.trim();
+
+        try {
+          const ytUrl = await searchYouTube(query);
+          
+          const timeLimits = game.getSongTimeLimits(await getAudioDuration(ytUrl));
+          const resource = createYouTubeResource(ytUrl, `*${timeLimits.startSecond}-${timeLimits.endSecond}`);
+          player.play(resource);
+
+          game.startNewRound(roundNumber, item.name, item.artists.map(a => a.name));
+
+          await new Promise((resolve) => player.once('idle', resolve));
+        } catch (err) {
+          console.error('Errore riproduzione traccia playlist:', err);
+          await message.channel.send(`Brano non trovato: ${title}`);
+        }
+        finally {
+          game.finishCurrentRound();
+          roundNumber += 1;
+        }
+      }
+
+      await message.channel.send('Varyabanda completato.');
+      game.stop();
+    } catch (err) {
+      console.error(err);
+      message.reply('Errore nel recupero della playlist.');
+    }
+  }
+
+  const guildId = message.guild?.id;
+  const runningGame = games.get(guildId);
+  if (runningGame && runningGame.gameStarted) {
+    console.log(`Nuovo tentativo di indovinare da ${message.author.username}: ${message.content}`);
+    const finalGuess = runningGame.newGuess(
+      message.author.id,
+      message.author.username,
+      message.content,
+      message.createdTimestamp
+    );
+    if (finalGuess) {
+      const player = getOrCreatePlayer(message.guild.id);
+      if (player.state.status !== 'idle') {
+        player.stop();
+      }
+    }
+  }
+
 });
+
+
 
 client.once('ready', () => {
   console.log(`✅ Bot attivo come ${client.user.tag}`);
