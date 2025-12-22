@@ -8,6 +8,10 @@ export default class VaryabandaGame extends EventEmitter {
         this.songDuration = options.songDuration ?? 20; // seconds
         this.guessLikenessPercent = options.guessLikenessPercent ?? 0.8; // percentage
         this.guessTimeLeniency = options.guessTimeLeniency ?? 1000; // milliseconds
+        this.pointsPerTitile = options.pointsPerTitle ?? 2;
+        this.pointsPerArtist = options.pointsPerArtist ?? 2;
+        this.pointsPerFeat = options.pointsPerFeat ?? 1;
+        this.redcuePointsOnMultipleGuesses = options.reducePointsOnMultipleGuesses ?? true;
 
         this.gameStarted = false;
         this.scoreboard = new Map();
@@ -52,7 +56,33 @@ export default class VaryabandaGame extends EventEmitter {
         currentRound.artistTimers.forEach(timer => {
             timer && clearTimeout(timer);
         });
-        this.emit('roundOver', { roundNumber: currentRound.roundNumber, title: currentRound.songTitle, artists: currentRound.songArtists, scoreboard: this.scoreboard });
+
+        let newPoints = new Map();
+        // award only once per user per title
+        for (const userId of currentRound.titleScorers) {
+            let points = this.pointsPerTitile;
+            if (this.redcuePointsOnMultipleGuesses && currentRound.titleScorers.size > 1) {
+                points = Math.ceil(points / 2);
+            }
+            this.addPointsToUser(userId, points);
+            newPoints.set(userId, (newPoints.get(userId) ?? 0) + points);
+        }
+
+        // award only once per user per artist
+        for (let i = 0; i < currentRound.artistScorers.length; i++) {
+            for (const userId of currentRound.artistScorers[i]) {
+                // determine if artist or feat
+                let points = (i === 0) ? this.pointsPerArtist : this.pointsPerFeat;
+                console.log("artist scorers size:", currentRound.artistScorers[i].size);
+                if (this.redcuePointsOnMultipleGuesses && currentRound.artistScorers[i].size > 1) {
+                    points = Math.ceil(points / 2);
+                }
+                this.addPointsToUser(userId, points);
+                newPoints.set(userId, (newPoints.get(userId) ?? 0) + points);
+            }
+        }
+
+        this.emit('roundOver', { roundNumber: currentRound.roundNumber, title: currentRound.songTitle, artists: currentRound.songArtists, scoreboard: this.scoreboard, newPoints: newPoints });
     }
 
     newGuess(userId, userName, guess, timestamp) {
@@ -76,11 +106,8 @@ export default class VaryabandaGame extends EventEmitter {
                         currentRound.titleTimer = null;
                     }, this.guessTimeLeniency);
                 }
-                // award only once per user per title
-                if (!currentRound.titleScorers.has(userId)) {
-                    currentRound.titleScorers.add(userId);
-                    this.addPointsToUser(userId, 2);
-                }
+                
+                currentRound.titleScorers.add(userId);
             }
         }
 
@@ -94,7 +121,7 @@ export default class VaryabandaGame extends EventEmitter {
             // Accept guesses if first guess not present OR within leniency window
             if ((currentRound.artistsGuessTimestamps[i] === 0) || ((timestamp - currentRound.artistsGuessTimestamps[i]) <= this.guessTimeLeniency)) {
                 const normalizedArtist = this.normalizeArtist(artist);
-                if (this.checkLikeness(guess, normalizedArtist)) {
+                if (this.checkLikeness(normalizedGuess, normalizedArtist)) {
                     if (currentRound.artistsGuessTimestamps[i] === 0) {
                         currentRound.artistsGuessTimestamps[i] = timestamp;
                         // schedule emission after leniency window
@@ -104,13 +131,8 @@ export default class VaryabandaGame extends EventEmitter {
                             currentRound.artistTimers[i] = null;
                         }, this.guessTimeLeniency);
                     }
-                    // award only once per user per artist
-                    const scorers = currentRound.artistScorers[i];
-                    if (!scorers.has(userId)) {
-                        scorers.add(userId);
-                        const points = i === 0 ? 2 : 1;
-                        this.addPointsToUser(userId, points);
-                    }
+
+                    currentRound.artistScorers[i].add(userId);
                 }
             }
 

@@ -9,8 +9,11 @@ const spotify = new SpotifyClient({
   },
 });
 
-export async function getPlaylistTracks(playlistId) {
-  const tracks = await spotify.playlists.getTracks(playlistId);
+export async function getPlaylistTracks(playlistId, limit = 100, random = true) {
+  let tracks = await spotify.playlists.getTracks(playlistId);
+  if (random) {
+    tracks = tracks.sort(() => Math.random() - 0.5);
+  }
 
   if (!tracks || tracks.length === 0) {
     throw new Error('La playlist non contiene tracce o non è accessibile.');

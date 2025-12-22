@@ -180,12 +180,18 @@ client.on('messageCreate', async (message) => {
     game.on('titleGuessed', ({ roundNumber, title, scorers }) => {
       message.channel.send(`Titolo indovinato da ${scorers.join ? scorers.join(', ') : scorers}: ${title}`);
     });
-    game.on('artistGuessed', ({ roundNumber, artist, scorers }) => {
-      message.channel.send(`Artista indovinato da ${scorers.join ? scorers.join(', ') : scorers}: ${artist}`);
+    game.on('artistGuessed', ({ roundNumber, artistIndex, artist, scorers }) => {
+      const artistType = artistIndex === 0 ? 'Artista' : 'Feat';
+      message.channel.send(`${artistType} indovinato da ${scorers.join ? scorers.join(', ') : scorers}: ${artist}`);
     });
-    game.on('roundOver', ({ roundNumber, title, artists, scoreboard }) => {
+    game.on('roundOver', ({ roundNumber, title, artists, scoreboard, newPoints }) => {
+      
       const scoreboardMsg = Array.from(scoreboard.entries()).sort((a, b) => b[1] - a[1])
-        .map(([userId, score]) => `${game.players.get(userId) ?? userId}: ${score} punti`)
+        .map(([userId, score]) => {
+          let points = newPoints.get(userId) ?? 0;
+          let newPointsText = points > 0 ? ` (+${points})` : '';
+          return `${game.players.get(userId) ?? userId}: ${score}${newPointsText} punti`
+        })
         .join('\n');
 
       message.channel.send(`
