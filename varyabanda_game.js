@@ -7,7 +7,7 @@ export default class VaryabandaGame extends EventEmitter {
         this.songStartPercent = options.songStartPercent ?? 0.2; // percentage
         this.songDuration = options.songDuration ?? 20; // seconds
         this.guessLikenessPercent = options.guessLikenessPercent ?? 0.8; // percentage
-        this.guessTimeLeniency = options.guessTimeLeniency ?? 1000; // milliseconds
+        this.guessTimeLeniency = options.guessTimeLeniency ?? 1500; // milliseconds
         this.pointsPerTitile = options.pointsPerTitle ?? 2;
         this.pointsPerArtist = options.pointsPerArtist ?? 2;
         this.pointsPerFeat = options.pointsPerFeat ?? 1;
