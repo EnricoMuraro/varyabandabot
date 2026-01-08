@@ -151,10 +151,16 @@ export default class VaryabandaGame extends EventEmitter {
         this.scoreboard.set(userId, currentScore + points);
     }
 
-    getSongTimeLimits(duration) {
-        console.log('Calculating time limits for duration:', duration);
-        const startSecond = Math.floor(duration * this.songStartPercent);
-        const endSecond = Math.min(startSecond + this.songDuration, duration);
+    getSongTimeLimits(audioInfo) {
+        console.log('Calculating time limits for duration:', audioInfo.duration);
+        let startSecond = 0;
+
+        if (audioInfo.mostReplayed !== null)
+            startSecond = Math.min(audioInfo.mostReplayed, audioInfo.duration - this.songDuration);
+        else
+            startSecond = Math.floor(audioInfo.duration * this.songStartPercent);
+
+        const endSecond = Math.min(startSecond + this.songDuration, audioInfo.duration);
         return { startSecond, endSecond };
     }
 

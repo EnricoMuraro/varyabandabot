@@ -47,20 +47,64 @@ export function createYouTubeResource(url, downloadSections='*0-inf') {
   });
 }
 
-export function getAudioDuration(url) {
+export function getAudioInfo(url) {
   return new Promise((resolve, reject) => {
-    const proc = spawn("yt-dlp", ["--get-duration", url]);
+    // First: get duration
+    const proc = spawn("yt-dlp", ["--get-duration", "--dump-json", url]);
 
-    let output = "";
-    proc.stdout.on("data", d => output += d.toString());
+    let jsonOutput = "";
+    let durationOutput = "";
+
+    proc.stdout.on("data", d => {
+      const text = d.toString();
+
+      // yt-dlp prints duration on one line and JSON on another
+      if (text.trim().startsWith("{")) {
+        jsonOutput += text;
+      } else {
+        durationOutput += text;
+      }
+    });
+
     proc.stderr.on("data", d => console.error("[yt-dlp]", d.toString()));
 
     proc.on("close", () => {
-      if (!output.trim()) return reject(0);
-      resolve(durationToSeconds(output.trim()));
+      if (!durationOutput.trim()) return reject("No duration");
+
+      const durationSeconds = durationToSeconds(durationOutput.trim());
+
+      let mostReplayed = null;
+
+      try {
+        const json = JSON.parse(jsonOutput);
+
+        // YouTube heatmap is usually in:
+        // json.heatmap or json.chapters[*].heatmap
+        const heatmap =
+          json?.heatmap ||
+          json?.chapters?.find(c => c.heatmap)?.heatmap ||
+          null;
+
+        if (heatmap && Array.isArray(heatmap)) {
+          // Each heatmap entry: { start_time, end_time, intensity }
+          const best = heatmap.reduce((a, b) =>
+            a.intensity > b.intensity ? a : b
+          );
+
+          mostReplayed = best.start_time; // seconds
+        }
+      } catch (e) {
+        console.error("Failed to parse JSON", e);
+      }
+
+      resolve({
+        duration: durationSeconds,
+        mostReplayed: mostReplayed // may be null if unavailable
+      });
     });
   });
 }
+
 
 function durationToSeconds(str) {
   const parts = str.split(":").map(Number);

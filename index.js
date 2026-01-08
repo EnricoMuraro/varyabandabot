@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { createYouTubeResource, getAudioDuration } from './yt-dlp.js';
+import { createYouTubeResource, getAudioInfo } from './yt-dlp.js';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { getPlaylistTracks } from './spotify.js'
 import VaryabandaGame from './varyabanda_game.js';
@@ -228,7 +228,7 @@ client.on('messageCreate', async (message) => {
         try {
           const ytUrl = await searchYouTube(query);
           
-          const timeLimits = game.getSongTimeLimits(await getAudioDuration(ytUrl));
+          const timeLimits = game.getSongTimeLimits(await getAudioInfo(ytUrl));
           const resource = createYouTubeResource(ytUrl, `*${timeLimits.startSecond}-${timeLimits.endSecond}`);
           player.play(resource);
 
