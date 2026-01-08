@@ -173,7 +173,7 @@ client.on('messageCreate', async (message) => {
       return;
     }
     // instantiate a fresh game for this command
-    const game = new VaryabandaGame();
+    const game = new VaryabandaGame(playerHandicapBonus=new Map());
     games.set(message.guild.id, game);
 
     // attach basic event listeners so the channel is informed

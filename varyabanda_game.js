@@ -11,8 +11,8 @@ export default class VaryabandaGame extends EventEmitter {
         this.pointsPerTitile = options.pointsPerTitle ?? 2;
         this.pointsPerArtist = options.pointsPerArtist ?? 2;
         this.pointsPerFeat = options.pointsPerFeat ?? 1;
-        this.redcuePointsOnMultipleGuesses = options.reducePointsOnMultipleGuesses ?? true;
-
+        this.reducePointsOnMultipleGuesses = options.reducePointsOnMultipleGuesses ?? true;
+        this.playerHandicapBonus = options.playerHandicapBonus ?? new Map(); // Map of userId to bonus points
         this.gameStarted = false;
         this.scoreboard = new Map();
         this.currentRoundIndex = -1;
@@ -64,7 +64,7 @@ export default class VaryabandaGame extends EventEmitter {
             if (this.redcuePointsOnMultipleGuesses && currentRound.titleScorers.size > 1) {
                 points = Math.ceil(points / 2);
             }
-            this.addPointsToUser(userId, points);
+            points =this.addPointsToUser(userId, points);
             newPoints.set(userId, (newPoints.get(userId) ?? 0) + points);
         }
 
@@ -77,7 +77,7 @@ export default class VaryabandaGame extends EventEmitter {
                 if (this.redcuePointsOnMultipleGuesses && currentRound.artistScorers[i].size > 1) {
                     points = Math.ceil(points / 2);
                 }
-                this.addPointsToUser(userId, points);
+                points = this.addPointsToUser(userId, points);
                 newPoints.set(userId, (newPoints.get(userId) ?? 0) + points);
             }
         }
@@ -147,8 +147,11 @@ export default class VaryabandaGame extends EventEmitter {
     }
     
     addPointsToUser(userId, points) {
+        let adjustedPoints = points;
+        adjustedPoints = points + this.playerHandicapBonus.get(userId) ?? 0;
         const currentScore = this.scoreboard.get(userId) ?? 0;
-        this.scoreboard.set(userId, currentScore + points);
+        this.scoreboard.set(userId, currentScore + adjustedPoints);
+        return adjustedPoints;
     }
 
     getSongTimeLimits(audioInfo) {
