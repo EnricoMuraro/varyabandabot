@@ -3,6 +3,7 @@ import { createYouTubeResource, getAudioInfo } from './yt-dlp.js';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { getPlaylistTracks } from './spotify.js'
 import VaryabandaGame from './varyabanda_game.js';
+import VaryatriviaGame from './varyatrivia_game.js';
 import {
   joinVoiceChannel,
   createAudioPlayer,
@@ -246,6 +247,100 @@ client.on('messageCreate', async (message) => {
       }
 
       await message.channel.send('Varyabanda completato.');
+      game.stop();
+    } catch (err) {
+      console.error(err);
+      message.reply('Errore nel recupero della playlist.');
+    }
+  }
+
+  if (content.startsWith('!varyatrivia')) {
+    const url = content.split(/\s+/)[1];
+    const playlistId = url?.split('/playlist/')[1]?.split('?')[0];
+    if (!playlistId) return message.reply('Link playlist non valido.');
+
+    const fillerPlaylistId = '';
+
+    const voiceChannel = message.member?.voice?.channel;
+    if (!voiceChannel) {
+      await message.reply('Entra in un canale vocale prima di usare il comando.');
+      return;
+    }
+    // instantiate a fresh game for this command
+    const game = new VaryatriviaGame();
+    games.set(message.guild.id, game);
+
+    // attach basic event listeners so the channel is informed
+    game.on('roundOver', ({ roundNumber, correctAnswer, scoreboard, newPoints }) => {
+      
+      const scoreboardMsg = Array.from(scoreboard.entries()).sort((a, b) => b[1] - a[1])
+        .map(([userId, score]) => {
+          let points = newPoints.get(userId) ?? 0;
+          let newPointsText = points > 0 ? ` (+${points})` : '';
+          return `${game.players.get(userId) ?? userId}: ${score}${newPointsText} punti`
+        })
+        .join('\n');
+
+      message.channel.send(`
+        Round ${roundNumber} terminato — Risposta corretta: ${correctAnswer}
+        Classifica:
+        ${scoreboardMsg}
+        `);
+
+      const player = players.get(message.guild.id);  
+      player.stop();
+    });
+    try {
+      const tracks = await getPlaylistTracks(playlistId);
+      await message.reply(`Avvio varyatrivia con ${tracks.length} brani.`);
+      console.log(`Avvio varyatrivia con ${tracks.length} brani.`);
+      const connection =
+        getVoiceConnection(message.guild.id) ||
+        joinVoiceChannel({
+          channelId: voiceChannel.id,
+          guildId: message.guild.id,
+          adapterCreator: message.guild.voiceAdapterCreator,
+        });
+
+      const player = getOrCreatePlayer(message.guild.id);
+      connection.subscribe(player);
+      game.start();
+      
+      triviaOptions = game.getTriviaOptions(tracks, fillerTracks);
+
+      // iterate items returned by getPlaylistTracks (we enrich items with `name` and `artistsString`)
+      let roundNumber = 1;
+      for (const item of tracks) {
+        const title = item.name;
+        const artistsString = item.artistsString;
+        const query = `${title} ${artistsString}`.trim();
+
+        try {
+          const ytUrl = await searchYouTube(query);
+          
+          const timeLimits = game.getSongTimeLimits(await getAudioInfo(ytUrl));
+          const resource = createYouTubeResource(ytUrl, `*${timeLimits.startSecond}-${timeLimits.endSecond}`);
+          player.play(resource);
+
+          message.channel.send(`
+            Round ${roundNumber} — Qual è il titolo di questa canzone?
+            Opzioni:
+            ${triviaOptions.tracks[roundNumber - 1].map((opt, index) => `${index + 1}. ${opt}`).join('\n')}
+          `);
+          game.startNewRound(roundNumber, triviaOptions.answers[roundNumber - 1]);
+
+          await new Promise((resolve) => player.once('idle', resolve));
+        } catch (err) {
+          console.error('Errore riproduzione traccia playlist:', err);
+          await message.channel.send(`Brano non trovato: ${title}`);
+        }
+        finally {
+          game.finishCurrentRound();
+          roundNumber += 1;
+        }
+      }
+
+      await message.channel.send('Varyatrivia completato.');
       game.stop();
     } catch (err) {
       console.error(err);

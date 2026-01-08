@@ -3,7 +3,7 @@ import { EventEmitter } from 'events';
 export default class VaryabandaGame extends EventEmitter {
     constructor(options = {}) {
         super();
-        this.rounds = options.rounds ?? 100;
+        //this.rounds = options.rounds ?? 100;
         this.songStartPercent = options.songStartPercent ?? 0.2; // percentage
         this.songDuration = options.songDuration ?? 20; // seconds
         this.guessLikenessPercent = options.guessLikenessPercent ?? 0.8; // percentage
