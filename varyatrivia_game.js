@@ -72,7 +72,7 @@ export default class VaryatriviaGame extends EventEmitter {
             }
             let points = 0;
             if (guessNumber === currentRound.correctAnswer) {
-                points = this.pointsPerGuess - (this.pointsPenalty * currentRound.correctGuesses);
+                points = Math.max(this.pointsPerGuess - (this.pointsPenalty * currentRound.correctGuesses), 1); // minimum 1 point
                 this.scoreboard.set(userId, (this.scoreboard.get(userId) ?? 0) + points);
                 currentRound.correctGuesses += 1;
             }
