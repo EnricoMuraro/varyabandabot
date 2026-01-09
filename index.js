@@ -259,8 +259,6 @@ client.on('messageCreate', async (message) => {
     const playlistId = url?.split('/playlist/')[1]?.split('?')[0];
     if (!playlistId) return message.reply('Link playlist non valido.');
 
-    const fillerPlaylistId = '';
-
     const voiceChannel = message.member?.voice?.channel;
     if (!voiceChannel) {
       await message.reply('Entra in un canale vocale prima di usare il comando.');
@@ -291,7 +289,11 @@ client.on('messageCreate', async (message) => {
       player.stop();
     });
     try {
+
       const tracks = await getPlaylistTracks(playlistId);
+      const fillerPlaylistId = '7LCuuRt5yI0KrlWKYyU1gR';
+      const fillerTracks = await getPlaylistTracks(fillerPlaylistId);
+
       await message.reply(`Avvio varyatrivia con ${tracks.length} brani.`);
       console.log(`Avvio varyatrivia con ${tracks.length} brani.`);
       const connection =
@@ -306,7 +308,7 @@ client.on('messageCreate', async (message) => {
       connection.subscribe(player);
       game.start();
       
-      triviaOptions = game.getTriviaOptions(tracks, fillerTracks);
+      let triviaOptions = game.getTriviaOptions(tracks, fillerTracks);
 
       // iterate items returned by getPlaylistTracks (we enrich items with `name` and `artistsString`)
       let roundNumber = 1;
@@ -325,7 +327,7 @@ client.on('messageCreate', async (message) => {
           message.channel.send(`
             Round ${roundNumber} — Qual è il titolo di questa canzone?
             Opzioni:
-            ${triviaOptions.tracks[roundNumber - 1].map((opt, index) => `${index + 1}. ${opt}`).join('\n')}
+            ${triviaOptions.tracks[roundNumber - 1].map((item, index) => `${index + 1}. ${item.track.name} by ${item.track.artists[0].name}`).join('\n')}
           `);
           game.startNewRound(roundNumber, triviaOptions.answers[roundNumber - 1]);
 

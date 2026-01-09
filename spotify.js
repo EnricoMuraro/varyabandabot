@@ -9,8 +9,24 @@ const spotify = new SpotifyClient({
   },
 });
 
-export async function getPlaylistTracks(playlistId, limit = 100, random = true) {
-  let tracks = await spotify.playlists.getTracks(playlistId);
+export async function getPlaylistTracks(playlistId, limit = null, random = true) {
+  let playlist = await spotify.playlists.get(playlistId);
+  let trackCount = playlist.totalTracks;
+  let remainingTracks = limit !== null ? limit : trackCount;
+  let tracks = [];
+
+  console.log(`Fetching up to ${remainingTracks} tracks from playlist ${playlistId}...`);
+
+  while (remainingTracks > 0) {
+    const batchSize = Math.min(remainingTracks, 100);
+    const tracksBatch = await spotify.playlists.getTracks(playlistId, {
+      limit: batchSize,
+      offset: trackCount - remainingTracks,
+    });
+    tracks = tracks.concat(tracksBatch);
+    remainingTracks -= tracksBatch.length;
+  }
+
   if (random) {
     tracks = tracks.sort(() => Math.random() - 0.5);
   }

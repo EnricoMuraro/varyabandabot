@@ -4,7 +4,7 @@ export default class VaryatriviaGame extends EventEmitter {
     constructor(options = {}) {
         super();
         this.songStartPercent = options.songStartPercent ?? 0.2;
-        this.songDuration = options.songDuration ?? 10; // seconds
+        this.songDuration = options.songDuration ?? 15; // seconds
         this.pointsPerGuess = options.pointsPerGuess ?? 10;
         this.pointsPenalty = options.pointsPenalty ?? 2;
         this.optionsPerRound = options.optionsPerRound ?? 4;
@@ -37,7 +37,7 @@ export default class VaryatriviaGame extends EventEmitter {
         const currentRound = this.rounds[this.currentRoundIndex];
         if (!currentRound) return;
 
-        newPoints = new Map();
+        let newPoints = new Map();
         for (const [userId, guessInfo] of currentRound.guesses.entries()) {
             if (guessInfo.points > 0) {
                 newPoints.set(userId, guessInfo.points);
@@ -65,30 +65,25 @@ export default class VaryatriviaGame extends EventEmitter {
 
         const normalizedGuess = guess.trim().toLowerCase();
         //check if normalizedGuess string is a number between 1 and optionsPerRound
-        try {
-            const guessNumber = parseInt(normalizedGuess);
-            if (guessNumber < 1 || guessNumber > this.optionsPerRound) {
-                return false;
-            }
-            let points = 0;
-            if (guessNumber === currentRound.correctAnswer) {
-                points = Math.max(this.pointsPerGuess - (this.pointsPenalty * currentRound.correctGuesses), 1); // minimum 1 point
-                this.scoreboard.set(userId, (this.scoreboard.get(userId) ?? 0) + points);
-                currentRound.correctGuesses += 1;
-            }
-            
-            currentRound.guesses.set(userId, { guess: guessNumber, points, timestamp });
-            return true;
-
-        } catch {
+        const guessNumber = parseInt(normalizedGuess);
+        if (Number.isNaN(guessNumber) || guessNumber < 1 || guessNumber > this.optionsPerRound) {
             return false;
         }
+        let points = 0;
+        if (guessNumber === currentRound.correctAnswer) {
+            points = Math.max(this.pointsPerGuess - (this.pointsPenalty * currentRound.correctGuesses), 1); // minimum 1 point
+            this.scoreboard.set(userId, (this.scoreboard.get(userId) ?? 0) + points);
+            currentRound.correctGuesses += 1;
+        }
+        
+        currentRound.guesses.set(userId, { guess: guessNumber, points, timestamp });
+        return false;
     }
 
     getTriviaOptions(tracks, fillerTracks) {
         //remove tracks in fillerTracks that are also in tracks by id
-        fillerTracks = fillerTracks.filter(fillerTrack => {
-            return !tracks.some(track => track.id === fillerTrack.id);
+        fillerTracks = fillerTracks.filter(fillerItem => {
+            return !tracks.some(item => item.track.id === fillerItem.track.id);
         });
 
         //randomize the fillerTracks array
@@ -111,6 +106,8 @@ export default class VaryatriviaGame extends EventEmitter {
                 }
             }
         }
+
+        return { tracks: triviaTracks, answers };
     }
 
     getSongTimeLimits(audioInfo) {

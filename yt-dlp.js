@@ -49,58 +49,50 @@ export function createYouTubeResource(url, downloadSections='*0-inf') {
 
 export function getAudioInfo(url) {
   return new Promise((resolve, reject) => {
-    // First: get duration
-    const proc = spawn("yt-dlp", ["--get-duration", "--dump-json", url]);
+    // Use yt-dlp's JSON dump which includes duration and any heatmap data
+    const proc = spawn('yt-dlp', ['--dump-single-json', url]);
 
-    let jsonOutput = "";
-    let durationOutput = "";
+    let out = '';
 
-    proc.stdout.on("data", d => {
-      const text = d.toString();
+    proc.stdout.on('data', d => { out += d.toString(); });
 
-      // yt-dlp prints duration on one line and JSON on another
-      if (text.trim().startsWith("{")) {
-        jsonOutput += text;
-      } else {
-        durationOutput += text;
-      }
-    });
+    proc.stderr.on('data', d => { console.error('[yt-dlp]', d.toString()); });
 
-    proc.stderr.on("data", d => console.error("[yt-dlp]", d.toString()));
-
-    proc.on("close", () => {
-      if (!durationOutput.trim()) return reject("No duration");
-
-      const durationSeconds = durationToSeconds(durationOutput.trim());
-
-      let mostReplayed = null;
+    proc.on('close', () => {
+      if (!out.trim()) return reject('No output from yt-dlp');
 
       try {
-        const json = JSON.parse(jsonOutput);
+        const json = JSON.parse(out);
 
-        // YouTube heatmap is usually in:
-        // json.heatmap or json.chapters[*].heatmap
-        const heatmap =
-          json?.heatmap ||
-          json?.chapters?.find(c => c.heatmap)?.heatmap ||
-          null;
+        // duration is usually provided in seconds
+        const durationSeconds = typeof json.duration === 'number' ? json.duration : (json.duration ? durationToSeconds(String(json.duration)) : null);
 
-        if (heatmap && Array.isArray(heatmap)) {
-          // Each heatmap entry: { start_time, end_time, intensity }
-          const best = heatmap.reduce((a, b) =>
-            a.intensity > b.intensity ? a : b
-          );
+        // heatmap may appear as json.heatmap or inside chapters
+        let heatmap = json.heatmap || null;
 
-          mostReplayed = best.start_time; // seconds
+        if ((!heatmap || !heatmap.length) && Array.isArray(json.chapters)) {
+          // collect chapter-level heatmaps (flatten)
+          const collected = json.chapters.flatMap(c => (c.heatmap && Array.isArray(c.heatmap)) ? c.heatmap : []);
+          heatmap = collected.length ? collected : heatmap;
         }
-      } catch (e) {
-        console.error("Failed to parse JSON", e);
-      }
 
-      resolve({
-        duration: durationSeconds,
-        mostReplayed: mostReplayed // may be null if unavailable
-      });
+        let mostReplayed = null;
+        if (heatmap && Array.isArray(heatmap) && heatmap.length) {
+          //remove the first two entries to ignore intro spikes
+          const best = heatmap.slice(2).reduce((a, b) => (a.value > b.value ? a : b));
+          mostReplayed = best.start_time ?? null;
+        }
+        
+        console.log('Extracted audio info:', { durationSeconds, heatmap, mostReplayed });
+
+        resolve({
+          duration: durationSeconds,
+          heatmap: heatmap || null,
+          mostReplayed
+        });
+      } catch (e) {
+        reject(e);
+      }
     });
   });
 }
